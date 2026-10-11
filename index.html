@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="description" content="Neon Snake — a polished, dependency-free vanilla JS take on the classic Snake game." />
+<title>Neon Snake</title>
+<style>
+  :root {
+    --bg: #0a0e17;
+    --panel: #111725;
+    --grid: #1a2233;
+    --snake: #38f9c4;
+    --snake-head: #6effda;
+    --food: #ff5c7a;
+    --text: #e8eef7;
+    --muted: #6b7a92;
+    --accent: #38f9c4;
+    --focus: #6ea8ff;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100dvh;
+    padding: 16px;
+    gap: 18px;
+    background:
+      radial-gradient(1200px 600px at 50% -10%, rgba(56,249,196,0.08), transparent 60%),
+      var(--bg);
+  }
+
+  /* Visible, high-contrast focus ring for keyboard users on every interactive control */
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 3px;
+  }
+
+  .title {
+    font-size: clamp(22px, 6vw, 34px);
+    font-weight: 800;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    background: linear-gradient(90deg, var(--snake), #6ea8ff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    text-shadow: 0 0 24px rgba(56,249,196,0.25);
+  }
+
+  .scoreboard {
+    display: flex;
+    gap: 14px;
+    align-items: stretch;
+  }
+
+  .stat {
+    background: var(--panel);
+    border: 1px solid var(--grid);
+    border-radius: 12px;
+    padding: 8px 18px;
+    text-align: center;
+    min-width: 92px;
+  }
+  .stat .label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .stat .value {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .stat .value.pulse {
+    animation: pulse 0.3s ease;
+  }
+  @keyframes pulse {
+    0% { transform: scale(1.3); }
+    100% { transform: scale(1); }
+  }
+
+  .board-wrap {
+    position: relative;
+    width: min(92vw, 420px);
+    aspect-ratio: 1 / 1;
+  }
+
+  canvas {
+    width: 100%;
+    height: 100%;
+    background: var(--panel);
+    border: 1px solid var(--grid);
+    border-radius: 16px;
+    box-shadow: 0 0 40px rgba(56,249,196,0.08), inset 0 0 60px rgba(0,0,0,0.4);
+    display: block;
+    touch-action: none;
+  }
+
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    background: rgba(10,14,23,0.82);
+    backdrop-filter: blur(4px);
+    border-radius: 16px;
+    text-align: center;
+    padding: 20px;
+    transition: opacity 0.2s ease;
+  }
+  .overlay.hidden { opacity: 0; pointer-events: none; }
+
+  .overlay h2 {
+    font-size: clamp(20px, 5vw, 28px);
+    font-weight: 800;
+    letter-spacing: 1px;
+  }
+  .overlay p {
+    color: var(--muted);
+    font-size: 14px;
+    max-width: 260px;
+    line-height: 1.5;
+  }
+  .overlay .new-best {
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  .btn {
+    margin-top: 4px;
+    border: none;
+    cursor: pointer;
+    background: linear-gradient(90deg, var(--snake), #6ea8ff);
+    color: #04121a;
+    font-weight: 800;
+    letter-spacing: 1px;
+    font-size: 14px;
+    padding: 12px 28px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    transition: transform 0.08s ease, box-shadow 0.2s ease;
+    box-shadow: 0 6px 20px rgba(56,249,196,0.3);
+  }
+  .btn:active { transform: translateY(1px) scale(0.98); }
+  .btn.secondary {
+    background: transparent;
+    color: var(--text);
+    box-shadow: none;
+    border: 1px solid var(--grid);
+  }
+
+  .hint {
+    color: var(--muted);
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    text-align: center;
+  }
+
+  /* On-screen dpad for touch */
+  .dpad {
+    display: grid;
+    grid-template-columns: repeat(3, 56px);
+    grid-template-rows: repeat(3, 56px);
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .dpad button {
+    background: var(--panel);
+    border: 1px solid var(--grid);
+    border-radius: 12px;
+    color: var(--accent);
+    font-size: 22px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .dpad button:active { background: var(--grid); }
+  .dpad .up    { grid-column: 2; grid-row: 1; }
+  .dpad .left  { grid-column: 1; grid-row: 2; }
+  .dpad .right { grid-column: 3; grid-row: 2; }
+  .dpad .down  { grid-column: 2; grid-row: 3; }
+  .dpad .pause { grid-column: 2; grid-row: 2; font-size: 16px; }
+
+  @media (hover: hover) and (pointer: fine) {
+    .dpad { display: none; }
+  }
+
+  footer {
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 1px;
+    margin-top: 4px;
+  }
+  footer a { color: var(--accent); text-decoration: none; }
+
+  /* Respect users who have asked their OS/browser to minimize motion */
+  @media (prefers-reduced-motion: reduce) {
+    .stat .value.pulse { animation: none; }
+    .overlay { transition: none; }
+    .btn { transition: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="title">Neon Snake</div>
+
+  <div class="scoreboard">
+    <div class="stat">
+      <div class="label">Score</div>
+      <div class="value" id="score">0</div>
+    </div>
+    <div class="stat">
+      <div class="label">Best</div>
+      <div class="value" id="best">0</div>
+    </div>
+  </div>
+
+  <div class="board-wrap">
+    <canvas id="game" width="420" height="420" role="img" aria-label="Snake game board"></canvas>
+    <div class="overlay" id="overlay">
+      <h2 id="ov-title">Neon Snake</h2>
+      <p id="ov-text">Eat the pink dots, grow long, don't hit the walls or yourself.</p>
+      <button class="btn" id="startBtn">Play</button>
+    </div>
+  </div>
+
+  <div class="hint">Arrow keys / WASD to move &nbsp;·&nbsp; Space to pause &nbsp;·&nbsp; Esc for menu</div>
+
+  <div class="dpad" aria-label="Direction controls">
+    <button class="up" data-dir="up" aria-label="Move up">▲</button>
+    <button class="left" data-dir="left" aria-label="Move left">◀</button>
+    <button class="pause" id="pauseBtn" aria-label="Pause or resume">❚❚</button>
+    <button class="right" data-dir="right" aria-label="Move right">▶</button>
+    <button class="down" data-dir="down" aria-label="Move down">▼</button>
+  </div>
+
+  <footer>Built by <a href="https://github.com/ecomsagar">SD Sagar</a></footer>
+
+<script>
+/**
+ * Neon Snake
+ * A dependency-free vanilla JS implementation of Snake with:
+ *   - a start menu / pause / game-over flow (see GameState),
+ *   - smoothly ramping difficulty,
+ *   - a persisted high score (localStorage),
+ *   - Web Audio sound effects (no audio files),
+ *   - a small particle burst when food is eaten,
+ *   - keyboard, on-screen d-pad, and swipe input.
+ *
+ * The file is organized into clearly separated concerns:
+ *   1. Config / constants
+ *   2. Persistence (high score)
+ *   3. Audio engine
+ *   4. Game state & logic
+ *   5. Rendering
+ *   6. Input handling
+ *   7. Main loop / bootstrapping
+ */
+(function () {
+  'use strict';
+
+  // ---------------------------------------------------------------------
+  // 1. Config / constants
+  // ---------------------------------------------------------------------
+  // Centralizing tunable numbers here means gameplay can be rebalanced
+  // without hunting for magic numbers scattered through the logic.
+  const CONFIG = {
+    GRID_SIZE: 21,              // cells per row/column
+    INITIAL_SNAKE_LENGTH: 3,
+    INITIAL_SPEED_MS: 130,      // tick interval at game start (lower = faster)
+    MIN_SPEED_MS: 65,           // fastest the game is allowed to get
+    SPEED_STEP_MS: 4,           // ms shaved off the interval per speed-up event
+    SPEED_UP_EVERY_N_FOODS: 3,  // how often (in foods eaten) speed increases
+    SWIPE_THRESHOLD_PX: 24,     // minimum swipe distance to register as a move
+    PARTICLE_COUNT: 10,
+    PARTICLE_LIFETIME_MS: 420,
+    HIGH_SCORE_KEY: 'neonSnake.highScore',
+  };
+
+  // Game phases as an enum-like object, so state checks read as intent
+  // ("state.phase === GameState.PAUSED") rather than magic strings.
+  const GameState = Object.freeze({
+    MENU: 'menu',
+    RUNNING: 'running',
+    PAUSED: 'paused',
+    GAME_OVER: 'game_over',
+  });
+
+  const Direction = Object.freeze({
+    UP: { x: 0, y: -1 },
+    DOWN: { x: 0, y: 1 },
+    LEFT: { x: -1, y: 0 },
+    RIGHT: { x: 1, y: 0 },
+  });
+
+  // ---------------------------------------------------------------------
+  // DOM references
+  // ---------------------------------------------------------------------
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const bestEl = document.getElementById('best');
+  const overlay = document.getElementById('overlay');
+  const ovTitle = document.getElementById('ov-title');
+  const ovText = document.getElementById('ov-text');
+  const startBtn = document.getElementById('startBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+
+  const CELL_SIZE = canvas.width / CONFIG.GRID_SIZE;
+
+  // ---------------------------------------------------------------------
+  // 2. Persistence
+  // ---------------------------------------------------------------------
+  // Wrapped in try/catch because localStorage can throw in privacy modes
+  // or sandboxed iframes — a high-score feature should never crash the game.
+  const HighScoreStore = {
+    load() {
+      try {
+        return parseInt(localStorage.getItem(CONFIG.HIGH_SCORE_KEY), 10) || 0;
+      } catch {
+        return 0;
+      }
+    },
+    save(value) {
+      try {
+        localStorage.setItem(CONFIG.HIGH_SCORE_KEY, String(value));
+      } catch {
+        // Best-effort only; nothing to recover from here.
+      }
+    },
+  };
+
+  // ---------------------------------------------------------------------
+  // 3. Audio engine
+  // ---------------------------------------------------------------------
+  // All sound is synthesized with the Web Audio API so the game stays a
+  // single dependency-free file. The AudioContext is created lazily on the
+  // first user gesture, since browsers block autoplay before interaction.
+  const AudioEngine = (() => {
+    let ctxAudio = null;
+
+    function ensureContext() {
+      if (!ctxAudio) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        ctxAudio = new AudioCtx();
+      }
+      // Resume if a previous gesture suspended it (e.g. after tab switch).
+      if (ctxAudio.state === 'suspended') ctxAudio.resume();
+      return ctxAudio;
+    }
+
+    function tone({ freq, duration, type = 'sine', gain = 0.2, glideTo = null }) {
+      const audio = ensureContext();
+      const osc = audio.createOscillator();
+      const gainNode = audio.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, audio.currentTime);
+      if (glideTo !== null) {
+        osc.frequency.exponentialRampToValueAtTime(glideTo, audio.currentTime + duration);
+      }
+      gainNode.gain.setValueAtTime(gain, audio.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + duration);
+      osc.connect(gainNode).connect(audio.destination);
+      osc.start();
+      osc.stop(audio.currentTime + duration);
+    }
+
+    return {
+      unlock() {
+        ensureContext();
+      },
+      playEat() {
+        tone({ freq: 520, glideTo: 880, duration: 0.12, type: 'square', gain: 0.15 });
+      },
+      playGameOver() {
+        tone({ freq: 220, glideTo: 60, duration: 0.5, type: 'sawtooth', gain: 0.18 });
+      },
+    };
+  })();
+
+  // ---------------------------------------------------------------------
+  // 4. Game state & logic
+  // ---------------------------------------------------------------------
+  // `state` holds everything mutable about the current game session.
+  // Keeping it as one object makes reset() trivial and keeps render()
+  // a pure function of state.
+  let state;
+  let particles = [];
+  let tickTimer = null;
+
+  function createInitialState() {
+    const startX = Math.floor(CONFIG.GRID_SIZE / 2);
+    const startY = Math.floor(CONFIG.GRID_SIZE / 2);
+    const snake = [];
+    for (let i = 0; i < CONFIG.INITIAL_SNAKE_LENGTH; i++) {
+      snake.push({ x: startX - i, y: startY });
+    }
+    return {
+      phase: GameState.MENU,
+      snake,
+      direction: Direction.RIGHT,
+      pendingDirection: Direction.RIGHT,
+      food: null,
+      score: 0,
+      highScore: HighScoreStore.load(),
+      speedMs: CONFIG.INITIAL_SPEED_MS,
+    };
+  }
+
+  function placeFood() {
+    // Rejection sampling is simple and fast enough for a 21x21 grid;
+    // a free-cell list would only pay off on much larger boards.
+    let candidate;
+    do {
+      candidate = {
+        x: Math.floor(Math.random() * CONFIG.GRID_SIZE),
+        y: Math.floor(Math.random() * CONFIG.GRID_SIZE),
+      };
+    } while (state.snake.some(seg => seg.x === candidate.x && seg.y === candidate.y));
+    state.food = candidate;
+  }
+
+  function startGame() {
+    AudioEngine.unlock();
+    state = createInitialState();
+    placeFood();
+    state.phase = GameState.RUNNING;
+    scoreEl.textContent = state.score;
+    overlay.classList.add('hidden');
+    restartLoop();
+  }
+
+  function restartLoop() {
+    clearInterval(tickTimer);
+    tickTimer = setInterval(tick, state.speedMs);
+  }
+
+  function togglePause() {
+    if (state.phase === GameState.RUNNING) {
+      state.phase = GameState.PAUSED;
+      ovTitle.textContent = 'Paused';
+      ovText.textContent = 'Take a breath. Press Space or tap resume to continue.';
+      startBtn.textContent = 'Resume';
+      overlay.classList.remove('hidden');
+    } else if (state.phase === GameState.PAUSED) {
+      state.phase = GameState.RUNNING;
+      overlay.classList.add('hidden');
+    }
+  }
+
+  function returnToMenu() {
+    clearInterval(tickTimer);
+    state = createInitialState();
+    particles = [];
+    scoreEl.textContent = 0;
+    ovTitle.textContent = 'Neon Snake';
+    ovText.textContent = "Eat the pink dots, grow long, don't hit the walls or yourself.";
+    startBtn.textContent = 'Play';
+    overlay.classList.remove('hidden');
+    render();
+  }
+
+  function endGame() {
+    state.phase = GameState.GAME_OVER;
+    clearInterval(tickTimer);
+    AudioEngine.playGameOver();
+
+    const isNewBest = state.score > state.highScore;
+    if (isNewBest) {
+      state.highScore = state.score;
+      HighScoreStore.save(state.highScore);
+      bestEl.textContent = state.highScore;
+    }
+
+    ovTitle.textContent = 'Game Over';
+    ovText.innerHTML = `You scored ${state.score}.` + (isNewBest && state.score > 0 ? ' <span class="new-best">New high score!</span>' : '');
+    startBtn.textContent = 'Play again';
+    overlay.classList.remove('hidden');
+  }
+
+  function setDirection(newDirection) {
+    // Ignore attempts to reverse directly into the snake's own neck.
+    const isReversal = newDirection.x === -state.direction.x && newDirection.y === -state.direction.y;
+    if (isReversal) return;
+    state.pendingDirection = newDirection;
+  }
+
+  function tick() {
+    if (state.phase !== GameState.RUNNING) return;
+
+    state.direction = state.pendingDirection;
+    const head = {
+      x: state.snake[0].x + state.direction.x,
+      y: state.snake[0].y + state.direction.y,
+    };
+
+    const hitWall = head.x < 0 || head.y < 0 || head.x >= CONFIG.GRID_SIZE || head.y >= CONFIG.GRID_SIZE;
+    const hitSelf = state.snake.some(seg => seg.x === head.x && seg.y === head.y);
+    if (hitWall || hitSelf) {
+      endGame();
+      return;
+    }
+
+    state.snake.unshift(head);
+
+    const ateFood = head.x === state.food.x && head.y === state.food.y;
+    if (ateFood) {
+      state.score++;
+      scoreEl.textContent = state.score;
+      pulse(scoreEl);
+      spawnParticles(state.food);
+      AudioEngine.playEat();
+      placeFood();
+      maybeSpeedUp();
+    } else {
+      state.snake.pop();
+    }
+
+    render();
+  }
+
+  function maybeSpeedUp() {
+    const shouldSpeedUp =
+      state.speedMs > CONFIG.MIN_SPEED_MS &&
+      state.score % CONFIG.SPEED_UP_EVERY_N_FOODS === 0;
+    if (!shouldSpeedUp) return;
+
+    state.speedMs = Math.max(CONFIG.MIN_SPEED_MS, state.speedMs - CONFIG.SPEED_STEP_MS);
+    restartLoop();
+  }
+
+  function pulse(el) {
+    el.classList.remove('pulse');
+    // Force reflow so the animation can be retriggered on consecutive eats.
+    void el.offsetWidth;
+    el.classList.add('pulse');
+  }
+
+  // ---------------------------------------------------------------------
+  // Particles (purely cosmetic — a short glow burst when food is eaten)
+  // ---------------------------------------------------------------------
+  function spawnParticles(cell) {
+    const originX = cell.x * CELL_SIZE + CELL_SIZE / 2;
+    const originY = cell.y * CELL_SIZE + CELL_SIZE / 2;
+    const now = performance.now();
+
+    for (let i = 0; i < CONFIG.PARTICLE_COUNT; i++) {
+      const angle = (Math.PI * 2 * i) / CONFIG.PARTICLE_COUNT + Math.random() * 0.5;
+      const speed = 1 + Math.random() * 2;
+      particles.push({
+        x: originX,
+        y: originY,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        bornAt: now,
+      });
+    }
+  }
+
+  function updateAndDrawParticles() {
+    if (particles.length === 0) return;
+    const now = performance.now();
+
+    particles = particles.filter(p => now - p.bornAt < CONFIG.PARTICLE_LIFETIME_MS);
+
+    for (const p of particles) {
+      const age = (now - p.bornAt) / CONFIG.PARTICLE_LIFETIME_MS; // 0 -> 1
+      p.x += p.vx;
+      p.y += p.vy;
+
+      ctx.globalAlpha = 1 - age;
+      ctx.fillStyle = getCssVar('--food');
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 3 * (1 - age) + 1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ---------------------------------------------------------------------
+  // 5. Rendering
+  // ---------------------------------------------------------------------
+  function drawRoundedRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function drawGridLines() {
+    ctx.strokeStyle = getCssVar('--grid');
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.4;
+    for (let i = 1; i < CONFIG.GRID_SIZE; i++) {
+      ctx.beginPath();
+      ctx.moveTo(i * CELL_SIZE, 0);
+      ctx.lineTo(i * CELL_SIZE, canvas.height);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, i * CELL_SIZE);
+      ctx.lineTo(canvas.width, i * CELL_SIZE);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawFood() {
+    const fx = state.food.x * CELL_SIZE;
+    const fy = state.food.y * CELL_SIZE;
+    ctx.shadowColor = getCssVar('--food');
+    ctx.shadowBlur = 16;
+    ctx.fillStyle = getCssVar('--food');
+    drawRoundedRect(fx + CELL_SIZE * 0.18, fy + CELL_SIZE * 0.18, CELL_SIZE * 0.64, CELL_SIZE * 0.64, 5);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  function drawSnake() {
+    for (let i = state.snake.length - 1; i >= 0; i--) {
+      const segment = state.snake[i];
+      const isHead = i === 0;
+
+      if (isHead) {
+        ctx.fillStyle = getCssVar('--snake-head');
+        ctx.shadowColor = getCssVar('--snake');
+        ctx.shadowBlur = 14;
+      } else {
+        ctx.fillStyle = getCssVar('--snake');
+        ctx.shadowBlur = 0;
+        // Fade the tail slightly so the head reads as the "front" of motion.
+        ctx.globalAlpha = 0.85 - (i / state.snake.length) * 0.35;
+      }
+
+      drawRoundedRect(segment.x * CELL_SIZE + 1, segment.y * CELL_SIZE + 1, CELL_SIZE - 2, CELL_SIZE - 2, 5);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    ctx.shadowBlur = 0;
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawGridLines();
+    if (state.food) drawFood();
+    drawSnake();
+    updateAndDrawParticles();
+  }
+
+  function getCssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  // ---------------------------------------------------------------------
+  // 6. Input handling
+  // ---------------------------------------------------------------------
+  const KEY_TO_DIRECTION = {
+    arrowup: Direction.UP, w: Direction.UP,
+    arrowdown: Direction.DOWN, s: Direction.DOWN,
+    arrowleft: Direction.LEFT, a: Direction.LEFT,
+    arrowright: Direction.RIGHT, d: Direction.RIGHT,
+  };
+
+  window.addEventListener('keydown', (event) => {
+    const key = event.key.toLowerCase();
+    const isGameKey = key in KEY_TO_DIRECTION || key === ' ' || key === 'escape';
+    if (isGameKey) event.preventDefault();
+
+    if (key in KEY_TO_DIRECTION) {
+      if (state.phase === GameState.RUNNING) setDirection(KEY_TO_DIRECTION[key]);
+    } else if (event.code === 'Space') {
+      if (state.phase === GameState.RUNNING || state.phase === GameState.PAUSED) togglePause();
+    } else if (key === 'escape') {
+      if (state.phase !== GameState.MENU) returnToMenu();
+    }
+  });
+
+  document.querySelectorAll('.dpad button[data-dir]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (state.phase !== GameState.RUNNING) return;
+      const directionByName = {
+        up: Direction.UP, down: Direction.DOWN,
+        left: Direction.LEFT, right: Direction.RIGHT,
+      };
+      setDirection(directionByName[btn.dataset.dir]);
+    });
+  });
+
+  pauseBtn.addEventListener('click', () => {
+    if (state.phase === GameState.RUNNING || state.phase === GameState.PAUSED) togglePause();
+  });
+
+  // Swipe gestures on the canvas itself, for a natural mobile control scheme.
+  let touchStart = null;
+  canvas.addEventListener('touchstart', (event) => {
+    touchStart = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+  }, { passive: true });
+
+  canvas.addEventListener('touchend', (event) => {
+    if (!touchStart || state.phase !== GameState.RUNNING) { touchStart = null; return; }
+    const dx = event.changedTouches[0].clientX - touchStart.x;
+    const dy = event.changedTouches[0].clientY - touchStart.y;
+
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < CONFIG.SWIPE_THRESHOLD_PX) {
+      touchStart = null;
+      return;
+    }
+
+    if (Math.abs(dx) > Math.abs(dy)) {
+      setDirection(dx > 0 ? Direction.RIGHT : Direction.LEFT);
+    } else {
+      setDirection(dy > 0 ? Direction.DOWN : Direction.UP);
+    }
+    touchStart = null;
+  }, { passive: true });
+
+  startBtn.addEventListener('click', () => {
+    if (state.phase === GameState.PAUSED) {
+      togglePause();
+    } else {
+      startGame();
+    }
+  });
+
+  // ---------------------------------------------------------------------
+  // 7. Bootstrapping
+  // ---------------------------------------------------------------------
+  state = createInitialState();
+  bestEl.textContent = state.highScore;
+  render();
+})();
+</script>
+</body>
+</html>
